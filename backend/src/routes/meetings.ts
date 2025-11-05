@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../config/database';
 import { toCamelCase, toSnakeCase } from '../utils/caseConverter';
+import { analyzeDailyScrum, matchStoryId } from '../services/executionAgent';
 import type {
   CreateMeetingRequest,
   UpdateMeetingRequest,
@@ -8,6 +9,9 @@ import type {
   MeetingRecord,
   MeetingListItem,
   MeetingsListResponse,
+  ProcessMeetingResponse,
+  ExecutionContext,
+  DailyScrumAnalysis,
 } from '../types';
 
 const router = Router();
@@ -81,7 +85,7 @@ router.post('/:meetingId/transcript', async (req: Request, res: Response): Promi
     }
 
     // Check meeting exists
-    const meetingCheck = await query('SELECT id, status, scheduled_start, scheduled_end FROM meetings WHERE id = $1', [
+    const meetingCheck = await query('SELECT id, status, scheduled_start, scheduled_end, meeting_type FROM meetings WHERE id = $1', [
       meetingId,
     ]);
 
@@ -108,12 +112,219 @@ router.post('/:meetingId/transcript', async (req: Request, res: Response): Promi
       [body.transcriptText, body.transcriptSource, 'completed', actualStart, actualEnd, meetingId]
     );
 
+    // Auto-process daily scrum transcripts
+    let autoProcessed = false;
+    if (meeting.meeting_type === 'daily_scrum') {
+      console.log(`Auto-processing daily scrum meeting ${meetingId}...`);
+      // Trigger processing in background (don't wait for completion)
+      // We'll just set a flag indicating it should be processed
+      // The frontend will need to manually trigger the /process endpoint
+      // OR we could trigger it here, but that might make the upload slow
+      autoProcessed = false; // Keep false for now, manual trigger required
+    }
+
     return res.json({
       success: true,
       message: 'Transcript uploaded successfully',
+      autoProcessed,
+      meetingType: meeting.meeting_type,
     });
   } catch (error: any) {
     console.error('Error uploading transcript:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// POST /api/meetings/:meetingId/process - Process meeting transcript with AI
+router.post('/:meetingId/process', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { meetingId } = req.params;
+    const { autoApply = false } = req.body;
+
+    // Get meeting with transcript
+    const meetingResult = await query(
+      `SELECT m.*, p.id as project_id, p.name as project_name
+       FROM meetings m
+       JOIN projects p ON m.project_id = p.id
+       WHERE m.id = $1`,
+      [meetingId]
+    );
+
+    if (meetingResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Meeting not found' });
+    }
+
+    const meeting = meetingResult.rows[0];
+
+    // Validate transcript exists
+    if (!meeting.transcript_text || meeting.transcript_text.trim().length < 50) {
+      return res.status(400).json({
+        success: false,
+        error: 'Meeting must have a transcript of at least 50 characters to process',
+      });
+    }
+
+    // Get current sprint for the project
+    const sprintResult = await query(
+      `SELECT id, sprint_number, start_date, end_date
+       FROM sprints
+       WHERE project_id = $1 AND status = 'active'
+       ORDER BY sprint_number DESC
+       LIMIT 1`,
+      [meeting.project_id]
+    );
+
+    if (sprintResult.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No active sprint found for this project. Please activate a sprint first.',
+      });
+    }
+
+    const sprint = sprintResult.rows[0];
+
+    // Calculate days into sprint
+    const startDate = new Date(sprint.start_date);
+    const endDate = new Date(sprint.end_date);
+    const today = new Date();
+    const daysIntoSprint = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    // Get stories in current sprint
+    const storiesResult = await query(
+      `SELECT id, story_key, title, status, story_points
+       FROM stories
+       WHERE sprint_id = $1
+       ORDER BY priority, story_key`,
+      [sprint.id]
+    );
+
+    const stories = storiesResult.rows.map((row) => ({
+      id: row.id,
+      key: row.story_key,
+      title: row.title,
+      status: row.status,
+      storyPoints: row.story_points || 0,
+    }));
+
+    // Build execution context
+    const context: ExecutionContext = {
+      projectId: meeting.project_id,
+      sprintNumber: sprint.sprint_number,
+      daysIntoSprint: Math.max(1, daysIntoSprint),
+      totalDays: Math.max(1, totalDays),
+      stories,
+    };
+
+    // Call execution agent to analyze transcript
+    console.log(`Processing meeting ${meetingId} with execution agent...`);
+    const analysis: DailyScrumAnalysis = await analyzeDailyScrum(meeting.transcript_text, context);
+
+    // Store analysis in meeting record
+    await query(
+      `UPDATE meetings
+       SET transcript_processed = true,
+           key_decisions = $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [JSON.stringify(analysis), meetingId]
+    );
+
+    let appliedUpdates = {
+      storiesUpdated: 0,
+      blockersCreated: 0,
+      newWorkFlagged: 0,
+    };
+
+    // If autoApply is true, apply the updates to the database
+    if (autoApply) {
+      // Apply story updates
+      for (const update of analysis.storyUpdates) {
+        // Match story ID if not provided
+        const storyId = update.storyId || matchStoryId(update.storyKey, stories);
+
+        if (storyId && update.confidence !== 'low') {
+          // Get current status
+          const currentStory = await query('SELECT status FROM stories WHERE id = $1', [storyId]);
+          const oldStatus = currentStory.rows[0]?.status || 'unknown';
+
+          // Update story status
+          await query(
+            `UPDATE stories
+             SET status = $1, updated_at = NOW()
+             WHERE id = $2`,
+            [update.newStatus, storyId]
+          );
+
+          // Record the update
+          await query(
+            `INSERT INTO story_updates (
+              story_id, field_changed, old_value, new_value,
+              source, source_reference, update_notes, updated_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              storyId,
+              'status',
+              oldStatus,
+              update.newStatus,
+              'daily_scrum',
+              meetingId,
+              update.notes,
+              'AI Agent',
+            ]
+          );
+
+          appliedUpdates.storiesUpdated++;
+        }
+      }
+
+      // Create blocker/risk records
+      for (const blocker of analysis.blockers) {
+        const storyId = blocker.storyId || (blocker.storyKey ? matchStoryId(blocker.storyKey, stories) : null);
+
+        await query(
+          `INSERT INTO risks (
+            project_id, story_id, title, description, severity,
+            risk_type, source, source_reference, status,
+            stakeholders, needs_meeting, created_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [
+            meeting.project_id,
+            storyId,
+            blocker.storyKey ? `Blocker on ${blocker.storyKey}` : 'Project Blocker',
+            blocker.description,
+            blocker.severity,
+            'blocker',
+            'daily_scrum',
+            meetingId,
+            'open',
+            JSON.stringify(blocker.stakeholders),
+            blocker.needsMeeting,
+            'AI Agent',
+          ]
+        );
+
+        appliedUpdates.blockersCreated++;
+      }
+
+      // Flag new work (store in key_decisions for now)
+      if (analysis.newWorkMentioned.length > 0) {
+        appliedUpdates.newWorkFlagged = analysis.newWorkMentioned.length;
+      }
+    }
+
+    const response: ProcessMeetingResponse = {
+      success: true,
+      analysis,
+      appliedUpdates: autoApply ? appliedUpdates : undefined,
+    };
+
+    return res.json(response);
+  } catch (error: any) {
+    console.error('Error processing meeting:', error);
     return res.status(500).json({
       success: false,
       error: error.message,

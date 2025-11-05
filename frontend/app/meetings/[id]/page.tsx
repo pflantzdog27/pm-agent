@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import TranscriptUpload from '../../components/TranscriptUpload';
 import { MEETING_TYPES } from '../../components/MeetingTypeSelect';
+import MeetingAnalysis from '../../components/MeetingAnalysis';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -31,6 +32,16 @@ interface Meeting {
   status: string;
   createdAt: string;
   updatedAt: string;
+  keyDecisions?: any;
+}
+
+interface AnalysisResult {
+  analysis: any;
+  appliedUpdates?: {
+    storiesUpdated: number;
+    blockersCreated: number;
+    newWorkFlagged: number;
+  };
 }
 
 export default function MeetingDetailPage() {
@@ -41,6 +52,8 @@ export default function MeetingDetailPage() {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     if (meetingId) {
@@ -70,6 +83,38 @@ export default function MeetingDetailPage() {
   const handleTranscriptUploadSuccess = () => {
     // Refetch meeting data to show the transcript
     fetchMeeting();
+  };
+
+  const handleProcessTranscript = async () => {
+    if (!meetingId) return;
+
+    try {
+      setProcessing(true);
+      setError(null);
+
+      const response = await fetch(`${API_URL}/api/meetings/${meetingId}/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ autoApply: true }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process transcript');
+      }
+
+      const data = await response.json();
+      setAnalysisResult(data);
+
+      // Refetch meeting to update processed status
+      fetchMeeting();
+    } catch (err: any) {
+      setError(err.message);
+      alert(`Error processing transcript: ${err.message}`);
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleBackToProject = () => {
@@ -180,11 +225,34 @@ export default function MeetingDetailPage() {
                         </span>
                       )}
                     </div>
-                    {meeting.transcriptProcessed && (
-                      <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded">
-                        Processed
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {meeting.transcriptProcessed && (
+                        <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded">
+                          Processed
+                        </span>
+                      )}
+                      {!meeting.transcriptProcessed && (
+                        <button
+                          onClick={handleProcessTranscript}
+                          disabled={processing}
+                          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {processing ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                              </svg>
+                              Process with AI
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="border border-gray-300 rounded-lg p-4 bg-gray-50 max-h-96 overflow-y-auto">
@@ -211,14 +279,21 @@ export default function MeetingDetailPage() {
               )}
             </div>
 
-            {/* AI Analysis Section (Phase 2 - Week 5) */}
-            {meeting.transcriptProcessed && (
+            {/* AI Analysis Section */}
+            {analysisResult && analysisResult.analysis && (
+              <MeetingAnalysis
+                analysis={analysisResult.analysis}
+                appliedUpdates={analysisResult.appliedUpdates}
+              />
+            )}
+
+            {meeting.transcriptProcessed && meeting.keyDecisions && !analysisResult && (
               <div className="bg-white shadow rounded-lg p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">AI Analysis</h2>
-                <div className="text-gray-500 text-center py-8">
-                  <p>AI analysis coming in Week 5!</p>
-                  <p className="text-sm mt-2">This section will show key decisions, action items, and story updates.</p>
-                </div>
+                <MeetingAnalysis
+                  analysis={meeting.keyDecisions}
+                  appliedUpdates={undefined}
+                />
               </div>
             )}
           </div>

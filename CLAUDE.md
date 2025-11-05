@@ -13,11 +13,13 @@ PM Agent is an AI-powered project management system for ServiceNow consulting. I
 4. Stories and sprints are saved to PostgreSQL
 5. User views and manages plan in web interface
 
-**Phase 2 - Meeting Management:**
+**Phase 2 - Meeting Management & AI Processing:**
 6. User creates meetings and uploads transcripts (manual or file)
 7. System stores meeting records with attendees and agendas
-8. Transcripts ready for AI processing (Week 5)
-9. User views meeting history and details
+8. AI Execution Agent processes daily scrum transcripts (Week 5)
+9. Automatic story status updates and blocker detection
+10. Timeline impact analysis and recommendations
+11. User views meeting history, analysis, and applied updates
 
 ## Architecture
 
@@ -32,6 +34,7 @@ backend/src/
 │   ├── documentProcessor.ts  # Extract text from files
 │   ├── embeddingService.ts   # Generate and store embeddings
 │   ├── planningAgent.ts      # Core AI planning logic
+│   ├── executionAgent.ts     # AI daily scrum analysis (Week 5)
 │   └── vectorStore.ts        # Vector search operations
 ├── routes/           # API endpoints
 │   ├── projects.ts   # Project CRUD
@@ -65,7 +68,8 @@ frontend/
     ├── StoryModal.tsx              # Story detail modal
     ├── MeetingTypeSelect.tsx       # Meeting type dropdown (Phase 2)
     ├── MeetingsList.tsx            # Meetings table view (Phase 2)
-    └── TranscriptUpload.tsx        # Transcript upload form (Phase 2)
+    ├── TranscriptUpload.tsx        # Transcript upload form (Phase 2)
+    └── MeetingAnalysis.tsx         # AI analysis display (Week 5)
 ```
 
 ### Database (PostgreSQL)
@@ -78,6 +82,7 @@ Tables:
 - knowledge_embeddings  # Vector embeddings for semantic search
 - meetings          # Meeting records with transcripts (Phase 2)
 - story_updates     # Story change tracking from meetings (Phase 2)
+- risks             # Blockers and risks detected by AI (Week 5)
 ```
 
 ## Key Files and Their Purpose
@@ -115,6 +120,66 @@ Tables:
 2. Add case in `processDocument()` switch statement
 3. Update file filter in `backend/src/routes/documents.ts`
 
+### 🤖 Execution Agent (Phase 2 - Week 5)
+
+**`backend/src/services/executionAgent.ts`**
+- The "intelligence" for daily scrum analysis
+- `analyzeDailyScrum()` - Main function that calls Claude
+- `buildDailyScrumPrompt()` - Constructs context-aware prompt
+- `validateAnalysis()` - Ensures response structure is correct
+
+**Key Concepts:**
+- Takes meeting transcript and current sprint context
+- Sends comprehensive prompt to Claude with story list
+- Parses JSON response into DailyScrumAnalysis object
+- Extracts 4 key insights:
+  1. **Story Updates**: Status changes (draft → in_progress → done)
+  2. **Blockers**: Issues preventing progress with severity assessment
+  3. **New Work**: Scope creep or new requirements mentioned
+  4. **Timeline Impact**: Sprint health and delay estimates
+
+**Intelligence Features:**
+- Smart story matching by ID or description
+- Confidence scoring (high/medium/low) for uncertain matches
+- Dependency tracking (identifies cascading impacts)
+- Stakeholder identification for blockers
+- Actionable recommendations
+
+**To modify analysis behavior:**
+1. Edit the prompt template in `buildDailyScrumPrompt()`
+2. Adjust severity thresholds for blockers
+3. Change confidence scoring logic
+4. Add new analysis categories (e.g., velocity tracking)
+
+**Example Output:**
+```json
+{
+  "storyUpdates": [
+    {
+      "storyKey": "STORY-007",
+      "oldStatus": "draft",
+      "newStatus": "done",
+      "confidence": "high",
+      "notes": "Completed and client approved"
+    }
+  ],
+  "blockers": [
+    {
+      "storyKey": "STORY-012",
+      "description": "Waiting for client SSO config",
+      "severity": "critical",
+      "needsMeeting": true,
+      "stakeholders": ["client IT team", "Adam"]
+    }
+  ],
+  "timelineAssessment": {
+    "sprintOnTrack": false,
+    "estimatedDelay": 2,
+    "recommendation": "Schedule urgent SSO meeting"
+  }
+}
+```
+
 ### 🔌 API Endpoints
 
 **`backend/src/routes/planning.ts`**
@@ -147,6 +212,7 @@ Tables:
 **`backend/src/routes/meetings.ts`**
 - `POST /api/projects/:projectId/meetings` - Create meeting
 - `POST /api/meetings/:meetingId/transcript` - Upload transcript
+- `POST /api/meetings/:meetingId/process` - Process transcript with AI (Week 5)
 - `PATCH /api/meetings/:meetingId` - Update meeting details
 - `GET /api/projects/:projectId/meetings` - List meetings with filters
 - `GET /api/meetings/:meetingId` - Get meeting details
@@ -651,11 +717,13 @@ curl http://localhost:3000/api/projects
 |----------|------|------|
 | Generate plan | `backend/src/services/planningAgent.ts` | generateProjectPlan() |
 | Build prompt | `backend/src/services/planningAgent.ts` | buildPlanningPrompt() |
+| Analyze daily scrum | `backend/src/services/executionAgent.ts` | analyzeDailyScrum() |
 | Process document | `backend/src/services/documentProcessor.ts` | processDocument() |
 | Upload document | `backend/src/routes/documents.ts` | POST /:projectId/documents |
 | Create project | `backend/src/routes/projects.ts` | POST / |
 | Create meeting | `backend/src/routes/meetings.ts` | POST /:projectId/meetings |
 | Upload transcript | `backend/src/routes/meetings.ts` | POST /:meetingId/transcript |
+| Process meeting AI | `backend/src/routes/meetings.ts` | POST /:meetingId/process |
 | Database query | `backend/src/config/database.ts` | query() |
 | Call Claude | `backend/src/config/anthropic.ts` | callClaude() |
 
@@ -688,9 +756,42 @@ curl http://localhost:3000/api/projects
 8. `TranscriptUpload.tsx` component validates (50 char minimum)
 9. Frontend calls `POST /api/meetings/:meetingId/transcript`
 10. Transcript saved, meeting status updated to "completed"
-11. Ready for AI processing (Week 5)
+11. User clicks "Process with AI" button on meeting detail page
+
+### AI Transcript Processing Flow (Week 5)
+1. User clicks "Process with AI" button on meeting detail page
+2. Frontend calls `POST /api/meetings/:meetingId/process` with `autoApply: true`
+3. Backend fetches meeting transcript and current sprint context
+4. Backend queries active sprint and stories in that sprint
+5. `executionAgent.analyzeDailyScrum()` called with transcript and context
+6. Claude AI analyzes transcript for:
+   - Story status updates (completed, in progress, blocked)
+   - Blockers and risks with severity assessment
+   - New work/scope changes mentioned
+   - Timeline impact and recommendations
+7. AI response validated and parsed into DailyScrumAnalysis
+8. If `autoApply: true`:
+   - Story statuses updated in database
+   - Story update records created in `story_updates` table
+   - Blocker records created in `risks` table
+   - New work items flagged in analysis
+9. Analysis stored in meeting's `key_decisions` JSONB field
+10. Meeting marked as `transcript_processed = true`
+11. Frontend displays comprehensive AI analysis using `MeetingAnalysis.tsx`
+12. User sees:
+    - ✅ Story updates with before/after status
+    - ⚠️ Blockers identified with severity badges
+    - 🆕 New work mentioned for review
+    - 📊 Timeline assessment with recommendations
+
+**Example Results:**
+- 3 stories automatically updated (STORY-007 → done, STORY-008 → in_progress, STORY-015 → ready)
+- 1 critical blocker created (SSO config waiting on client IT for 3 days)
+- 1 new work item flagged (mobile push notifications - 8 points)
+- Sprint marked as not on track with 2-day delay estimate
+- Actionable recommendation: "Schedule urgent meeting with client IT team"
 
 ---
 
 **Last Updated:** November 2024
-**Version:** 2.0.0 (Phase 2 - Week 4 Complete: Meeting Infrastructure)
+**Version:** 2.1.0 (Phase 2 - Week 5 Complete: AI Daily Scrum Intelligence)

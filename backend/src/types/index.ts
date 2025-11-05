@@ -281,3 +281,93 @@ export interface MeetingsListResponse {
   meetings: MeetingListItem[];
   total: number;
 }
+
+// Execution Agent types (Phase 2 - Week 5)
+export interface StoryUpdateDetection {
+  storyId: string | null;
+  storyKey: string;
+  oldStatus: string;
+  newStatus: string;
+  notes: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface BlockerDetection {
+  storyId: string | null;
+  storyKey?: string;
+  description: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  blockedSince: string;
+  needsMeeting: boolean;
+  stakeholders: string[];
+}
+
+export interface NewWorkDetection {
+  description: string;
+  context: string;
+  likelyStoryPoints: number;
+  shouldCreateStory: boolean;
+}
+
+export interface TimelineAssessment {
+  sprintOnTrack: boolean;
+  estimatedDelay: number;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+  recommendation: string;
+}
+
+export interface DailyScrumAnalysis {
+  storyUpdates: StoryUpdateDetection[];
+  blockers: BlockerDetection[];
+  newWorkMentioned: NewWorkDetection[];
+  timelineAssessment: TimelineAssessment;
+}
+
+export interface ExecutionContext {
+  projectId: string;
+  sprintNumber: number;
+  daysIntoSprint: number;
+  totalDays: number;
+  stories: Array<{
+    id: string;
+    key: string;
+    title: string;
+    status: string;
+    storyPoints: number;
+  }>;
+}
+
+export interface ProcessMeetingResponse {
+  success: boolean;
+  analysis?: DailyScrumAnalysis;
+  appliedUpdates?: {
+    storiesUpdated: number;
+    blockersCreated: number;
+    newWorkFlagged: number;
+  };
+  error?: string;
+}
+
+// Risk/Blocker database types
+export interface RiskRecord {
+  id: string;
+  project_id: string;
+  story_id?: string;
+  title: string;
+  description: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  risk_type: 'blocker' | 'dependency' | 'technical' | 'resource' | 'scope';
+  source: string;
+  source_reference?: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'mitigated';
+  blocked_since?: Date;
+  resolved_at?: Date;
+  stakeholders?: string[];
+  needs_meeting: boolean;
+  estimated_delay_days?: number;
+  resolution_notes?: string;
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
+}
