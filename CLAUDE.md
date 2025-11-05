@@ -6,12 +6,18 @@ This document helps Claude Code (or other developers) understand and work with t
 
 PM Agent is an AI-powered project management system for ServiceNow consulting. It uses Claude AI to analyze project documents and generate comprehensive project plans with user stories, sprints, and timelines.
 
-**Core Workflow:**
+**Core Workflow (Phase 1):**
 1. User uploads project documents (SOW, requirements)
 2. System extracts text and generates embeddings
 3. Claude AI analyzes documents and generates structured project plan
 4. Stories and sprints are saved to PostgreSQL
 5. User views and manages plan in web interface
+
+**Phase 2 - Meeting Management:**
+6. User creates meetings and uploads transcripts (manual or file)
+7. System stores meeting records with attendees and agendas
+8. Transcripts ready for AI processing (Week 5)
+9. User views meeting history and details
 
 ## Architecture
 
@@ -30,7 +36,8 @@ backend/src/
 ├── routes/           # API endpoints
 │   ├── projects.ts   # Project CRUD
 │   ├── documents.ts  # Document upload and management
-│   └── planning.ts   # Plan generation and retrieval
+│   ├── planning.ts   # Plan generation and retrieval
+│   └── meetings.ts   # Meeting management and transcripts (Phase 2)
 ├── utils/            # Utility functions
 │   └── caseConverter.ts      # camelCase ↔ snake_case conversion
 ├── types/            # TypeScript type definitions
@@ -45,10 +52,20 @@ frontend/
 │   ├── page.tsx                    # Dashboard (project list)
 │   ├── projects/
 │   │   ├── new/page.tsx           # Create project + upload docs
-│   │   └── [id]/page.tsx          # Project detail + plan view
+│   │   └── [id]/
+│   │       ├── page.tsx           # Project detail + plan view
+│   │       └── meetings/
+│   │           ├── page.tsx       # Meetings list (Phase 2)
+│   │           └── new/page.tsx   # Create meeting (Phase 2)
+│   ├── meetings/
+│   │   └── [id]/page.tsx          # Meeting detail + transcript (Phase 2)
 │   ├── layout.tsx                  # Root layout with header/footer
 │   └── globals.css                 # Tailwind styles
-└── components/                     # Reusable components (future)
+└── components/                     # Reusable components
+    ├── StoryModal.tsx              # Story detail modal
+    ├── MeetingTypeSelect.tsx       # Meeting type dropdown (Phase 2)
+    ├── MeetingsList.tsx            # Meetings table view (Phase 2)
+    └── TranscriptUpload.tsx        # Transcript upload form (Phase 2)
 ```
 
 ### Database (PostgreSQL)
@@ -59,6 +76,8 @@ Tables:
 - sprints           # Sprint definitions and dates
 - documents         # Uploaded documents and extracted text
 - knowledge_embeddings  # Vector embeddings for semantic search
+- meetings          # Meeting records with transcripts (Phase 2)
+- story_updates     # Story change tracking from meetings (Phase 2)
 ```
 
 ## Key Files and Their Purpose
@@ -122,6 +141,43 @@ Tables:
 - Uses React hooks (useState, useEffect)
 - Fetches data on mount
 - Polls or refetches after plan generation
+
+### 📅 Meeting Management (Phase 2)
+
+**`backend/src/routes/meetings.ts`**
+- `POST /api/projects/:projectId/meetings` - Create meeting
+- `POST /api/meetings/:meetingId/transcript` - Upload transcript
+- `PATCH /api/meetings/:meetingId` - Update meeting details
+- `GET /api/projects/:projectId/meetings` - List meetings with filters
+- `GET /api/meetings/:meetingId` - Get meeting details
+- `DELETE /api/meetings/:meetingId` - Delete meeting
+
+**Meeting Types:**
+- `daily_scrum` - Daily standup meetings
+- `weekly_status` - Weekly status calls with client
+- `design_review` - Review designs/wireframes
+- `uat` - User acceptance testing sessions
+- `kickoff` - Project or sprint kickoffs
+- `retrospective` - Team retrospectives
+- `client_general` - General client meetings
+
+**Key Implementation Details:**
+- Transcript upload supports manual paste or .txt file upload
+- Minimum 50 characters required for transcripts
+- Meeting status: scheduled, completed, cancelled
+- Transcript source tracking: manual, uploaded_file, zoom
+- JSONB fields for attendees, AI analysis results
+- Ready for AI processing in Week 5
+
+**Frontend Components:**
+- `MeetingTypeSelect.tsx` - Dropdown with meeting types and descriptions
+- `MeetingsList.tsx` - Filterable table view with status badges
+- `TranscriptUpload.tsx` - Dual-mode upload (paste or file)
+
+**Frontend Pages:**
+- `/projects/[id]/meetings` - Meetings list with stats
+- `/projects/[id]/meetings/new` - Create meeting form
+- `/meetings/[id]` - Meeting detail + transcript upload
 
 ## Common Development Tasks
 
@@ -331,6 +387,34 @@ curl -X POST http://localhost:3000/api/projects/{PROJECT_ID}/documents \
 **Generate Plan:**
 ```bash
 curl -X POST http://localhost:3000/api/projects/{PROJECT_ID}/generate-plan
+```
+
+**Create Meeting (Phase 2):**
+```bash
+curl -X POST http://localhost:3000/api/projects/{PROJECT_ID}/meetings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Daily Standup - Sprint 3 Day 5",
+    "meetingType": "daily_scrum",
+    "scheduledStart": "2024-11-05T09:00:00Z",
+    "attendees": [{"name": "Adam", "role": "Developer"}],
+    "agenda": "Sprint progress update"
+  }'
+```
+
+**Upload Transcript:**
+```bash
+curl -X POST http://localhost:3000/api/meetings/{MEETING_ID}/transcript \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transcriptText": "Adam: Yesterday I completed STORY-12...",
+    "transcriptSource": "manual"
+  }'
+```
+
+**List Meetings:**
+```bash
+curl http://localhost:3000/api/projects/{PROJECT_ID}/meetings
 ```
 
 ### Testing Claude Prompt Changes
@@ -550,6 +634,15 @@ curl http://localhost:3000/api/projects
 - Review backend logs for detailed error
 - Verify Claude API is accessible
 
+**"Transcript must be at least 50 characters" (Phase 2)**
+- Ensure transcript text is substantial
+- Cannot upload empty or very short transcripts
+- Paste or upload more content
+
+**"Meeting not found" (Phase 2)**
+- Check meeting ID is correct UUID
+- Verify meeting exists: `SELECT * FROM meetings WHERE id = '...'`
+
 ## Quick Reference
 
 ### Important Function Locations
@@ -561,6 +654,8 @@ curl http://localhost:3000/api/projects
 | Process document | `backend/src/services/documentProcessor.ts` | processDocument() |
 | Upload document | `backend/src/routes/documents.ts` | POST /:projectId/documents |
 | Create project | `backend/src/routes/projects.ts` | POST / |
+| Create meeting | `backend/src/routes/meetings.ts` | POST /:projectId/meetings |
+| Upload transcript | `backend/src/routes/meetings.ts` | POST /:meetingId/transcript |
 | Database query | `backend/src/config/database.ts` | query() |
 | Call Claude | `backend/src/config/anthropic.ts` | callClaude() |
 
@@ -582,7 +677,20 @@ curl http://localhost:3000/api/projects
 7. Stories and sprints saved in transaction
 8. Frontend displays generated plan
 
+### Meeting & Transcript Upload Flow (Phase 2)
+1. User clicks "Meetings" in `frontend/app/projects/[id]/page.tsx`
+2. Navigates to meetings list view
+3. Clicks "New Meeting" → `frontend/app/projects/[id]/meetings/new/page.tsx`
+4. Fills in meeting details (title, type, date, attendees, agenda)
+5. Frontend calls `POST /api/projects/:projectId/meetings`
+6. Meeting created and user redirected to meeting detail
+7. User uploads transcript via paste or .txt file
+8. `TranscriptUpload.tsx` component validates (50 char minimum)
+9. Frontend calls `POST /api/meetings/:meetingId/transcript`
+10. Transcript saved, meeting status updated to "completed"
+11. Ready for AI processing (Week 5)
+
 ---
 
 **Last Updated:** November 2024
-**Version:** 1.0.0 (Phase 1 Complete)
+**Version:** 2.0.0 (Phase 2 - Week 4 Complete: Meeting Infrastructure)
