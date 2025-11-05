@@ -1,0 +1,26 @@
+PROJECT: Employee Center Implementation for ABC Corp
+CLIENT: ABC Corporation
+DURATION: 8 weeks
+BUDGET: 160 hours
+
+SCOPE:
+- Design and implement modern Employee Center
+- Build 3 custom workspaces:
+  * IT Service Request workspace
+  * HR Services workspace  
+  * Knowledge Base workspace
+- Implement basic Virtual Agent for FAQs
+- Mobile responsive design
+- Integration with existing SSO
+
+DELIVERABLES:
+- Wireframes and mockups (Week 1-2)
+- Core workspace development (Weeks 3-5)
+- Virtual Agent setup (Week 6)
+- User acceptance testing (Week 7)
+- Go-live support (Week 8)
+
+EXCLUSIONS:
+- Backend workflow modifications
+- Custom integrations beyond SSO
+- Advanced reporting features
