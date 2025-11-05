@@ -26,6 +26,12 @@ interface Project {
   targetEndDate?: string;
 }
 
+interface JournalEntry {
+  timestamp: string;
+  author: string;
+  content: string;
+}
+
 interface Story {
   id: string;
   storyKey: string;
@@ -40,7 +46,7 @@ interface Story {
   estimatedHours?: number;
   assignedTo?: string;
   assignmentGroup?: string;
-  notes?: string;
+  notes?: string | JournalEntry[];
 }
 
 interface Sprint {
@@ -341,54 +347,55 @@ export default function ProjectDetail() {
           </button>
         </div>
       </div>
+    </div>
 
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-800">Error: {error}</p>
-        </div>
-      )}
+    {error && (
+      <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <p className="text-red-800">Error: {error}</p>
+      </div>
+    )}
 
-      {generating && (
-        <div className="mb-6 p-6 bg-primary-50 border border-primary-200 rounded-lg">
-          <div className="flex items-center gap-3">
-            <svg className="animate-spin h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            <div>
-              <p className="font-medium text-primary-900">AI is analyzing your documents...</p>
-              <p className="text-sm text-primary-700">
-                This may take 30-60 seconds. Claude is creating your comprehensive project plan with timeline, meetings, and risks.
-              </p>
-            </div>
+    {generating && (
+      <div className="mb-6 p-6 bg-primary-50 border border-primary-200 rounded-lg">
+        <div className="flex items-center gap-3">
+          <svg className="animate-spin h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <div>
+            <p className="font-medium text-primary-900">AI is analyzing your documents...</p>
+            <p className="text-sm text-primary-700">
+              This may take 30-60 seconds. Claude is creating your comprehensive project plan with timeline, meetings, and risks.
+            </p>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
-      {/* No Plan Yet */}
-      {!hasPlan && !generating && (
-        <div className="card text-center py-12">
-          <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
-            />
-          </svg>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No plan generated yet</h3>
-          <p className="text-gray-600 mb-6">
-            Click the button above to generate an AI-powered project plan with timeline, sprints, meetings, and risk assessment
-          </p>
-        </div>
-      )}
+    {/* No Plan Yet */}
+    {!hasPlan && !generating && (
+      <div className="card text-center py-12">
+        <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+          />
+        </svg>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">No plan generated yet</h3>
+        <p className="text-gray-600 mb-6">
+          Click the button above to generate an AI-powered project plan with timeline, sprints, meetings, and risk assessment
+        </p>
+      </div>
+    )}
 
-      {/* Tabbed Interface */}
-      {hasPlan && sprints.length > 0 && (
+    {/* Tabbed Interface */}
+    {hasPlan && sprints.length > 0 && (
         <div>
           {/* Tab Navigation */}
           <div className="border-b border-gray-200 mb-6">
