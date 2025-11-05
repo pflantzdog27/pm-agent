@@ -9,6 +9,7 @@ import { isEmbeddingEnabled } from './services/embeddingService';
 import projectsRouter from './routes/projects';
 import documentsRouter from './routes/documents';
 import planningRouter from './routes/planning';
+import meetingsRouter from './routes/meetings';
 
 // Load environment variables
 dotenv.config();
@@ -61,12 +62,16 @@ app.get('/health', async (_req: Request, res: Response) => {
 app.use('/api/projects', projectsRouter);
 app.use('/api/projects', documentsRouter); // Mounted under /api/projects/:projectId/documents
 app.use('/api/projects', planningRouter); // Mounted under /api/projects/:projectId/generate-plan
+app.use('/api/projects', meetingsRouter); // Mounted under /api/projects/:projectId/meetings
 
 // Documents routes (also accessible directly)
 app.use('/api/documents', documentsRouter);
 
 // Sprints and stories routes (from planning router)
 app.use('/api', planningRouter);
+
+// Meetings routes (also accessible directly)
+app.use('/api/meetings', meetingsRouter);
 
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
@@ -96,6 +101,14 @@ app.get('/', (_req: Request, res: Response) => {
         getPlan: 'GET /api/projects/:projectId/plan',
         updateStory: 'PUT /api/stories/:storyId',
         updateSprint: 'PUT /api/sprints/:sprintId',
+      },
+      meetings: {
+        list: 'GET /api/projects/:projectId/meetings',
+        create: 'POST /api/projects/:projectId/meetings',
+        get: 'GET /api/meetings/:meetingId',
+        update: 'PATCH /api/meetings/:meetingId',
+        delete: 'DELETE /api/meetings/:meetingId',
+        uploadTranscript: 'POST /api/meetings/:meetingId/transcript',
       },
     },
   });

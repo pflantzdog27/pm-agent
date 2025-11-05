@@ -303,13 +303,24 @@ export default function ProjectDetail() {
             <p className="text-gray-600">Client: {project.clientName}</p>
           </div>
 
-          <button
-            onClick={generatePlan}
-            disabled={generating}
-            className={`${
-              hasPlan ? 'btn btn-secondary' : 'btn btn-primary'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
+          <div className="flex gap-3">
+            <button
+              onClick={() => router.push(`/projects/${projectId}/meetings`)}
+              className="btn btn-secondary flex items-center gap-2"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Meetings
+            </button>
+
+            <button
+              onClick={generatePlan}
+              disabled={generating}
+              className={`${
+                hasPlan ? 'btn btn-secondary' : 'btn btn-primary'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
             {generating ? (
               <>
                 <svg className="animate-spin h-5 w-5 mr-2 inline" fill="none" viewBox="0 0 24 24">

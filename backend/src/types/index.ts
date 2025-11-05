@@ -132,7 +132,8 @@ export interface Risk {
   mitigation: string;
 }
 
-export interface Meeting {
+// Meeting recommendation from AI (used in planning)
+export interface MeetingRecommendation {
   type: string;
   frequency: string;
   duration: string;
@@ -140,11 +141,82 @@ export interface Meeting {
   purpose: string;
 }
 
+// Actual meeting record (Phase 2)
+export type MeetingType =
+  | 'daily_scrum'
+  | 'weekly_status'
+  | 'design_review'
+  | 'uat'
+  | 'kickoff'
+  | 'retrospective'
+  | 'client_general';
+
+export type MeetingStatus = 'scheduled' | 'completed' | 'cancelled';
+
+export type TranscriptSource = 'manual' | 'zoom' | 'uploaded_file';
+
+export interface MeetingAttendee {
+  name: string;
+  email?: string;
+  role?: string;
+}
+
+export interface MeetingRecord {
+  id: string;
+  project_id: string;
+
+  // Meeting details
+  title: string;
+  meeting_type: MeetingType;
+
+  // Scheduling
+  scheduled_start: Date;
+  scheduled_end?: Date;
+  actual_start?: Date;
+  actual_end?: Date;
+
+  // Participants
+  attendees: MeetingAttendee[];
+
+  // Content
+  agenda?: string;
+  meeting_notes?: string;
+
+  // Transcript
+  transcript_text?: string;
+  transcript_source?: TranscriptSource;
+  transcript_processed: boolean;
+
+  // AI Analysis (Week 5-6)
+  key_decisions?: any;
+  action_items?: any;
+  sentiment_score?: number;
+  topics_discussed?: any;
+
+  status: MeetingStatus;
+
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface StoryUpdate {
+  id: string;
+  story_id: string;
+  field_changed: string;
+  old_value?: string;
+  new_value?: string;
+  source: string;
+  source_reference?: string;
+  update_notes?: string;
+  updated_by: string;
+  created_at: Date;
+}
+
 export interface GeneratedPlan {
   stories: GeneratedStory[];
   sprints: GeneratedSprint[];
   timeline: Timeline;
-  meetings?: Meeting[];
+  meetings?: MeetingRecommendation[];
   risks: Risk[];
 }
 
@@ -167,4 +239,45 @@ export interface GeneratePlanResponse {
   success: boolean;
   plan?: GeneratedPlan;
   error?: string;
+}
+
+// Meeting API types (Phase 2)
+export interface CreateMeetingRequest {
+  title: string;
+  meetingType: MeetingType;
+  scheduledStart: string; // ISO timestamp
+  scheduledEnd?: string; // ISO timestamp
+  attendees: MeetingAttendee[];
+  agenda?: string;
+}
+
+export interface UpdateMeetingRequest {
+  title?: string;
+  meetingType?: MeetingType;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  attendees?: MeetingAttendee[];
+  agenda?: string;
+  status?: MeetingStatus;
+}
+
+export interface UploadTranscriptRequest {
+  transcriptText: string;
+  transcriptSource: TranscriptSource;
+}
+
+export interface MeetingListItem {
+  id: string;
+  title: string;
+  meetingType: MeetingType;
+  scheduledStart: Date;
+  hasTranscript: boolean;
+  transcriptProcessed: boolean;
+  attendeeCount: number;
+  status: MeetingStatus;
+}
+
+export interface MeetingsListResponse {
+  meetings: MeetingListItem[];
+  total: number;
 }
