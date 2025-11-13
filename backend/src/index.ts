@@ -10,6 +10,7 @@ import projectsRouter from './routes/projects';
 import documentsRouter from './routes/documents';
 import planningRouter from './routes/planning';
 import meetingsRouter from './routes/meetings';
+import codeRouter from './routes/code';
 
 // Load environment variables
 dotenv.config();
@@ -73,6 +74,9 @@ app.use('/api', planningRouter);
 // Meetings routes (also accessible directly)
 app.use('/api/meetings', meetingsRouter);
 
+// Code execution routes
+app.use('/api/code', codeRouter);
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -109,6 +113,9 @@ app.get('/', (_req: Request, res: Response) => {
         update: 'PATCH /api/meetings/:meetingId',
         delete: 'DELETE /api/meetings/:meetingId',
         uploadTranscript: 'POST /api/meetings/:meetingId/transcript',
+      },
+      code: {
+        execute: 'POST /api/code/execute',
       },
     },
   });

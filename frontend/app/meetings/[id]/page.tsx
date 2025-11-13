@@ -44,6 +44,12 @@ interface AnalysisResult {
   };
 }
 
+interface V2Result {
+  summary: string;
+  codeGenerated?: string;
+  executionTime: number;
+}
+
 export default function MeetingDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -53,7 +59,9 @@ export default function MeetingDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [v2Result, setV2Result] = useState<V2Result | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [processingMethod, setProcessingMethod] = useState<'v1' | 'v2'>('v2'); // Default to V2 (new approach)
 
   useEffect(() => {
     if (meetingId) {
@@ -91,21 +99,37 @@ export default function MeetingDetailPage() {
     try {
       setProcessing(true);
       setError(null);
+      setAnalysisResult(null);
+      setV2Result(null);
 
-      const response = await fetch(`${API_URL}/api/meetings/${meetingId}/process`, {
+      // Choose endpoint based on processing method
+      const endpoint = processingMethod === 'v2'
+        ? `${API_URL}/api/meetings/${meetingId}/process-v2`
+        : `${API_URL}/api/meetings/${meetingId}/process`;
+
+      const requestBody = processingMethod === 'v1' ? { autoApply: true } : {};
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ autoApply: true }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to process transcript');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process transcript');
       }
 
       const data = await response.json();
-      setAnalysisResult(data);
+
+      // Store result based on method
+      if (processingMethod === 'v2') {
+        setV2Result(data);
+      } else {
+        setAnalysisResult(data);
+      }
 
       // Refetch meeting to update processed status
       fetchMeeting();
@@ -216,42 +240,72 @@ export default function MeetingDetailPage() {
 
               {meeting.transcriptText ? (
                 <div>
-                  <div className="mb-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-green-600 font-medium">✓ Transcript uploaded</span>
-                      {meeting.transcriptSource && (
-                        <span className="text-xs text-gray-500">
-                          (Source: {meeting.transcriptSource.replace('_', ' ')})
-                        </span>
-                      )}
+                  <div className="mb-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-green-600 font-medium">✓ Transcript uploaded</span>
+                        {meeting.transcriptSource && (
+                          <span className="text-xs text-gray-500">
+                            (Source: {meeting.transcriptSource.replace('_', ' ')})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {meeting.transcriptProcessed && (
+                          <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded">
+                            Processed
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {meeting.transcriptProcessed && (
-                        <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded">
-                          Processed
-                        </span>
-                      )}
-                      {!meeting.transcriptProcessed && (
+
+                    {/* Processing Method Toggle */}
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm text-gray-700 font-medium">Processing Method:</span>
+                      <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
                         <button
-                          onClick={handleProcessTranscript}
+                          onClick={() => setProcessingMethod('v1')}
                           disabled={processing}
-                          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                          className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                            processingMethod === 'v1'
+                              ? 'bg-white text-blue-600 shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          } disabled:opacity-50`}
                         >
-                          {processing ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                              Processing...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                              </svg>
-                              Process with AI
-                            </>
-                          )}
+                          V1 (Tool Calling)
                         </button>
-                      )}
+                        <button
+                          onClick={() => setProcessingMethod('v2')}
+                          disabled={processing}
+                          className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                            processingMethod === 'v2'
+                              ? 'bg-white text-blue-600 shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          } disabled:opacity-50`}
+                        >
+                          V2 (Code Execution)
+                          <span className="ml-1 text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded">New</span>
+                        </button>
+                      </div>
+                      <button
+                        onClick={handleProcessTranscript}
+                        disabled={processing}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        {processing ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                            </svg>
+                            Process with AI
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
 
@@ -279,21 +333,74 @@ export default function MeetingDetailPage() {
               )}
             </div>
 
-            {/* AI Analysis Section */}
+            {/* AI Analysis Section - V1 Tool Calling */}
             {analysisResult && analysisResult.analysis && (
-              <MeetingAnalysis
-                analysis={analysisResult.analysis}
-                appliedUpdates={analysisResult.appliedUpdates}
-              />
+              <div className="bg-white shadow rounded-lg p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded">V1 - Tool Calling</span>
+                  <h2 className="text-lg font-semibold text-gray-900">AI Analysis</h2>
+                </div>
+                <MeetingAnalysis
+                  analysis={analysisResult.analysis}
+                  appliedUpdates={analysisResult.appliedUpdates}
+                />
+              </div>
             )}
 
-            {meeting.transcriptProcessed && meeting.keyDecisions && !analysisResult && (
+            {/* AI Analysis Section - V2 Code Execution */}
+            {v2Result && (
               <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">AI Analysis</h2>
-                <MeetingAnalysis
-                  analysis={meeting.keyDecisions}
-                  appliedUpdates={undefined}
-                />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">V2 - Code Execution</span>
+                    <h2 className="text-lg font-semibold text-gray-900">AI Processing Results</h2>
+                  </div>
+                  <span className="text-sm text-gray-500">
+                    ⚡ Executed in {(v2Result.executionTime / 1000).toFixed(2)}s
+                  </span>
+                </div>
+
+                {/* Summary */}
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Summary</h3>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono">
+                      {v2Result.summary}
+                    </pre>
+                  </div>
+                </div>
+
+                {/* Generated Code (collapsible) */}
+                {v2Result.codeGenerated && (
+                  <details className="mt-4">
+                    <summary className="cursor-pointer text-sm font-semibold text-gray-700 hover:text-gray-900">
+                      View Generated Code ({v2Result.codeGenerated.length} characters)
+                    </summary>
+                    <div className="mt-3 bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                      <pre className="text-green-400 text-xs font-mono">
+                        {v2Result.codeGenerated}
+                      </pre>
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
+
+            {meeting.transcriptProcessed && meeting.keyDecisions && !analysisResult && !v2Result && (
+              <div className="bg-white shadow rounded-lg p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">AI Analysis (Stored)</h2>
+                {meeting.keyDecisions.summary ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono">
+                      {meeting.keyDecisions.summary}
+                    </pre>
+                  </div>
+                ) : (
+                  <MeetingAnalysis
+                    analysis={meeting.keyDecisions}
+                    appliedUpdates={undefined}
+                  />
+                )}
               </div>
             )}
           </div>

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '../config/database';
 import { toCamelCase, toSnakeCase } from '../utils/caseConverter';
 import { analyzeDailyScrum, matchStoryId } from '../services/executionAgent';
+import { processMeetingWithCode } from '../services/meetingProcessorV2';
 import type {
   CreateMeetingRequest,
   UpdateMeetingRequest,
@@ -328,6 +329,38 @@ router.post('/:meetingId/process', async (req: Request, res: Response): Promise<
     return res.status(500).json({
       success: false,
       error: error.message,
+    });
+  }
+});
+
+// POST /api/meetings/:meetingId/process-v2 - Process meeting with code execution (new approach)
+router.post('/:meetingId/process-v2', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { meetingId } = req.params;
+
+    console.log(`\n🚀 Processing meeting ${meetingId} with code execution (V2)...`);
+
+    const result = await processMeetingWithCode(meetingId);
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: result.error || 'Processing failed'
+      });
+    }
+
+    return res.json({
+      success: true,
+      summary: result.summary,
+      codeGenerated: result.codeGenerated,
+      executionTime: result.executionTime
+    });
+
+  } catch (error: any) {
+    console.error('Error processing meeting (V2):', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
