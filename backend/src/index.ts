@@ -171,7 +171,7 @@ async function startServer() {
     }
 
     // Start listening
-    app.listen(PORT, () => {
+    app.listen(Number(PORT), '0.0.0.0', () => {
       console.log('');
       console.log('═══════════════════════════════════════════');
       console.log(`🚀 PM Agent API Server Running`);
